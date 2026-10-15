@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>e-CRF ANN BOO–UD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: tiga kolom — rel bagian (kiri) | formulir CRF (tengah) | lembar ringkasan bergaris kertas uroflow (kanan) */
+:root{
+  --bg:#EDF2F3; --surface:#FFFFFF; --surface-2:#F5F8F9; --sunk:#E4ECEE;
+  --fg:#11242B; --muted:#56696F; --line:#D3DEE1; --line-strong:#B3C4C9;
+  --accent:#0B6878; --accent-ink:#FFFFFF; --accent-soft:#DAEEF1; --accent-fg:#08586A;
+  --ok:#1A7549; --ok-soft:#DCF1E5; --warn:#935600; --warn-soft:#FAEBD1; --bad:#AE2A20; --bad-soft:#F8DFDC;
+  --grid:rgba(11,104,120,.09);
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --r:10px; --r-sm:6px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0B1316; --surface:#121E22; --surface-2:#162529; --sunk:#0E181B;
+  --fg:#E1EBED; --muted:#8FA3A9; --line:#24373D; --line-strong:#354B52;
+  --accent:#4DB4C5; --accent-ink:#06242A; --accent-soft:#143841; --accent-fg:#83D2DE;
+  --ok:#5CC38E; --ok-soft:#13342A; --warn:#E3A64B; --warn-soft:#382B12; --bad:#F07D73; --bad-soft:#3D1D1A;
+  --grid:rgba(77,180,197,.08); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0B1316; --surface:#121E22; --surface-2:#162529; --sunk:#0E181B;
+  --fg:#E1EBED; --muted:#8FA3A9; --line:#24373D; --line-strong:#354B52;
+  --accent:#4DB4C5; --accent-ink:#06242A; --accent-soft:#143841; --accent-fg:#83D2DE;
+  --ok:#5CC38E; --ok-soft:#13342A; --warn:#E3A64B; --warn-soft:#382B12; --bad:#F07D73; --bad-soft:#3D1D1A;
+  --grid:rgba(77,180,197,.08); color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:-.01em;text-wrap:balance;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.wrap{max-width:1440px;margin:0 auto;padding-inline:24px}
+@media (max-width:600px){.wrap{padding-inline:16px}}
+
+/* ---------- Header ---------- */
+.masthead{border-bottom:1px solid var(--line);background:var(--surface)}
+.masthead .wrap{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding-block:20px 0}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px}
+.masthead h1{font-size:clamp(20px,2.4vw,27px);line-height:1.18;max-width:46ch}
+.masthead .meta{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:4px}
+.tabs{display:flex;gap:4px;margin-top:16px;overflow-x:auto;scrollbar-width:none;flex-basis:100%}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;border:0;background:none;padding:10px 14px 12px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tab .count{font-family:var(--f-mono);font-size:12px;background:var(--sunk);border-radius:999px;padding:1px 7px;margin-left:6px;color:var(--muted)}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.chip.ok{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.chip.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.chip.bad{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
+.chip.acc{background:var(--accent-soft);border-color:transparent;color:var(--accent-fg)}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+
+/* ---------- Workspace ---------- */
+.workspace{display:grid;grid-template-columns:200px minmax(0,1fr) 340px;gap:24px;padding-block:24px 64px;align-items:start}
+.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
+.rail ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.rail a{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-sm);text-decoration:none;color:var(--fg);font-size:14px;font-weight:500}
+.rail a:hover{background:var(--surface)}
+.rail .no{font-family:var(--f-mono);font-size:12px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line-strong);color:var(--muted)}
+.rail a[data-done="full"] .no{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.rail a[data-done="part"] .no{border-color:var(--accent);color:var(--accent-fg)}
+.rail .frac{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.rail-note{font-size:12.5px;color:var(--muted);margin:16px 10px 0;line-height:1.45}
+
+.chipnav{display:none}
+
+.banner{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--accent-soft);color:var(--accent-fg);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;font-size:14px}
+.banner b{color:var(--fg)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:16px;scroll-margin-top:16px}
+.card-h{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.card-h .no{font-family:var(--f-mono);font-weight:600;font-size:13px;color:var(--accent-fg);background:var(--accent-soft);border-radius:6px;padding:3px 8px;margin-top:2px}
+.card-h h2{font-size:19px;line-height:1.25}
+.card-h p{margin:3px 0 0;color:var(--muted);font-size:13.5px;max-width:70ch}
+.card-b{padding:18px 20px 20px;display:grid;gap:18px}
+.subhead{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 -6px}
+
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px 16px}
+.full{grid-column:1/-1}
+.field{display:grid;gap:5px;align-content:start;min-width:0}
+.field>label,.field>.lbl{font-size:13px;font-weight:600}
+.req{font-style:normal;font-weight:500;font-size:11px;color:var(--accent-fg);margin-left:4px;letter-spacing:.02em}
+.opt{font-style:normal;font-weight:400;font-size:11px;color:var(--muted);margin-left:4px}
+input[type=text],input[type=date],input[type=tel],select,textarea{width:100%;min-width:0;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:9px 11px;line-height:1.3}
+textarea{resize:vertical;min-height:62px}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+input.bad{border-color:var(--bad)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.hint.bad{color:var(--bad)}
+.hint.warn{color:var(--warn)}
+.unit-in{display:flex;align-items:stretch}
+.unit-in input{border-top-right-radius:0;border-bottom-right-radius:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.unit-in .u{display:flex;align-items:center;padding:0 10px;border:1px solid var(--line-strong);border-left:0;border-radius:0 var(--r-sm) var(--r-sm) 0;background:var(--sunk);font-family:var(--f-mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.readout{display:flex;align-items:center;min-height:39px;padding:0 11px;border-radius:var(--r-sm);background:var(--sunk);font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500}
+
+/* segmented radios */
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{position:relative;display:inline-flex}
+.seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.seg span{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);font-size:14px;font-weight:500;cursor:pointer;user-select:none}
+.seg span small{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.seg input:checked+span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.seg input:checked+span small{color:inherit;opacity:.8}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+
+.checks{display:grid;gap:8px}
+.check{display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:start;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--accent)}
+.check.auto{cursor:default}
+.check .tick{width:18px;height:18px;margin-top:2px;border-radius:4px;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid var(--line-strong);color:var(--muted)}
+.check .tick.ok{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.check .tick.bad{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.panel{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px;background:var(--surface-2);display:grid;gap:10px;align-content:start;min-width:0}
+.panel h3{font-family:var(--f-body);font-size:13px;font-weight:600}
+
+/* IPSS */
+.ipss-strip{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 14px;border-radius:var(--r-sm);background:var(--surface-2);border:1px solid var(--line);font-size:13.5px}
+.ipss-strip b{font-family:var(--f-mono);font-size:15px}
+.ipss-list{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.q{border:0;margin:0;padding:14px;border-top:1px solid var(--line);min-width:0}
+.q:first-child{border-top:0}
+.q.unanswered{background:transparent}
+.q legend{float:left;width:100%;padding:0;margin-bottom:10px;display:grid;grid-template-columns:28px 1fr;gap:4px 10px}
+.q legend+*{clear:both}
+.q .qn{font-family:var(--f-mono);font-weight:600;color:var(--muted);font-size:14px;padding-top:1px}
+.q .qt{font-weight:500}
+.q .tags{grid-column:2;display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;letter-spacing:.03em;border-radius:4px;padding:1px 6px}
+.tag.s{background:var(--warn-soft);color:var(--warn)}
+.tag.v{background:var(--accent-soft);color:var(--accent-fg)}
+.tag.qol{background:var(--sunk);color:var(--muted)}
+.scale{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-left:38px}
+.scale.s7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.scale label{position:relative;display:flex}
+.scale input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.scale .opt-box{flex:1;display:grid;gap:2px;align-content:start;justify-items:center;text-align:center;padding:8px 4px 9px;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);cursor:pointer;user-select:none;min-width:0}
+.scale .opt-box b{font-family:var(--f-mono);font-size:17px;line-height:1.1}
+.scale .opt-box small{font-size:11px;line-height:1.25;color:var(--muted)}
+.scale input:checked+.opt-box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.scale input:checked+.opt-box small{color:inherit;opacity:.85}
+.scale input:focus-visible+.opt-box{outline:2px solid var(--accent);outline-offset:2px}
+
+/* uploads */
+.drop{border:1.5px dashed var(--line-strong);border-radius:var(--r);padding:18px;display:grid;gap:8px;justify-items:center;text-align:center;background:var(--surface-2);cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop .ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);color:var(--accent-fg)}
+.drop strong{font-size:14px}
+.drop .hint{max-width:46ch}
+.drop.compact{padding:12px;grid-template-columns:auto 1fr;justify-items:start;text-align:left;align-items:center}
+.drop.compact .ico{width:34px;height:34px}
+.filecard{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px;align-items:start;border:1px solid var(--line);border-radius:var(--r);padding:12px;background:var(--surface-2)}
+.filecard .thumb{width:120px;aspect-ratio:3/4;max-width:100%;border-radius:6px;background:var(--sunk);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center;color:var(--muted);font-family:var(--f-mono);font-size:12px}
+.filecard .thumb img,.filecard .thumb canvas{width:100%;height:100%;object-fit:contain;background:#fff}
+.filecard .fname{font-weight:600;word-break:break-all}
+.filecard .fmeta{font-size:12.5px;color:var(--muted);font-family:var(--f-mono)}
+.filecard .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.gallery figure{margin:0;position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:var(--sunk)}
+.gallery img{width:100%;height:100%;object-fit:cover}
+.gallery button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:14px;line-height:1}
+.gallery figcaption{position:absolute;left:0;bottom:0;right:0;font-family:var(--f-mono);font-size:10px;padding:2px 5px;background:rgba(0,0,0,.55);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--r-sm);padding:9px 15px;font-weight:600;font-size:14px;cursor:pointer;border:1px solid var(--line-strong);background:var(--surface);color:var(--fg);text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--bad)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.result{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;background:var(--surface-2);display:grid;gap:4px;min-width:0}
+.result .k{font-size:12px;color:var(--muted);font-weight:500}
+.result .v{font-family:var(--f-mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.result .chip{white-space:normal}
+.result .f{font-size:11.5px;color:var(--muted);font-family:var(--f-mono)}
+
+.form-foot{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.form-foot .grp{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- Summary sheet ---------- */
+.sheet{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.sheet-h{padding:14px 16px 12px;background-color:var(--surface-2);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:12px 12px;border-bottom:1px solid var(--line)}
+.sheet-h .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.sheet-h .code{font-family:var(--f-mono);font-size:20px;font-weight:600;margin-top:2px;word-break:break-all}
+.sheet-h .sub{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sheet-b{padding:4px 16px 16px}
+.srow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:0}
+.srow .k{font-size:13px;color:var(--muted)}
+.srow .v{font-family:var(--f-mono);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.srow .v small{font-weight:400;color:var(--muted);font-size:11.5px}
+.srow .wide{grid-column:1/-1}
+.ipss-big{display:flex;align-items:baseline;gap:6px}
+.ipss-big b{font-family:var(--f-mono);font-size:34px;line-height:1;font-weight:600}
+.ipss-big span{font-family:var(--f-mono);color:var(--muted)}
+.bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--sunk);margin-top:8px}
+.bar i{display:block;height:100%}
+.bar .s{background:var(--warn)}
+.bar .v{background:var(--accent)}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--f-mono)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+.progress{height:6px;border-radius:999px;background:var(--sunk);overflow:hidden;margin-top:6px}
+.progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.sheet-f{padding:12px 16px 16px;display:grid;gap:8px;border-top:1px solid var(--line)}
+
+/* ---------- Mobile bar ---------- */
+.mbar{display:none}
+
+/* ---------- Map tab ---------- */
+.map{display:grid;grid-template-columns:minmax(0,1.35fr) 28px minmax(0,.8fr) 28px minmax(0,1fr);grid-template-rows:repeat(5,auto);gap:10px 0;align-items:stretch}
+.mod{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}
+.mod h3{font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mod h3 small{font-family:var(--f-mono);font-weight:500;font-size:11px;color:var(--muted)}
+.mod ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+.mod li{font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:2px 7px}
+.mod li em{font-style:normal;font-family:var(--f-mono);color:var(--muted);font-size:11px;margin-left:4px}
+.arrow{display:grid;place-items:center;color:var(--line-strong);font-size:18px}
+.branch{border-radius:var(--r);padding:12px 14px;display:grid;align-content:center;gap:4px;background:var(--accent-soft);color:var(--accent-fg);min-width:0}
+.branch b{font-family:var(--f-display);font-size:15px;color:var(--fg)}
+.branch span{font-size:12.5px}
+.fusion{grid-column:5;grid-row:1/6;display:grid;gap:10px;align-content:center}
+.fusion .core{border:2px solid var(--accent);border-radius:var(--r);padding:14px;background:var(--surface);text-align:center}
+.fusion .core b{font-family:var(--f-display);font-size:17px;display:block}
+.fusion .core span{font-size:12.5px;color:var(--muted)}
+.outs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.out{border-radius:var(--r);padding:12px;background:var(--fg);color:var(--bg);text-align:center}
+.out b{font-family:var(--f-display);font-size:16px;display:block}
+.out span{font-size:11.5px;opacity:.8;font-family:var(--f-mono)}
+.gt{border:1px dashed var(--line-strong);border-radius:var(--r);padding:12px;font-size:12.5px;display:grid;gap:4px;background:var(--surface)}
+.gt code{font-family:var(--f-mono);font-size:12px;color:var(--fg)}
+.section-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin:28px 0 12px}
+.section-title h2{font-size:20px}
+.section-title p{margin:0;color:var(--muted);font-size:13.5px}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2);white-space:nowrap;position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+td.mono,td .mono{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+td.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.grp-row td{background:var(--sunk);font-weight:600;font-size:12.5px;color:var(--muted)}
+.empty{padding:40px 20px;text-align:center;display:grid;gap:8px;justify-items:center;color:var(--muted)}
+.empty strong{color:var(--fg);font-size:16px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:24px 0 12px}
+.toolbar .grp{display:flex;flex-wrap:wrap;gap:8px}
+.note{font-size:13px;color:var(--muted);max-width:80ch}
+.note.warn{color:var(--warn)}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:40;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.modal{position:fixed;inset:0;background:rgba(5,15,18,.55);display:grid;place-items:center;padding:16px;z-index:50}
+.modal .box{background:var(--surface);border-radius:var(--r);padding:18px;width:min(720px,100%);display:grid;gap:12px;max-height:90vh;overflow:auto}
+.modal textarea{font-family:var(--f-mono);font-size:12px;min-height:240px}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1180px){
+  .workspace{grid-template-columns:minmax(0,1fr) 310px}
+  .rail{display:none}
+  .chipnav{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none;margin-bottom:4px}
+  .chipnav::-webkit-scrollbar{display:none}
+  .chipnav a{text-decoration:none}
+}
+@media (max-width:880px){
+  .workspace{grid-template-columns:minmax(0,1fr);padding-bottom:110px}
+  .sheet{position:static}
+  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));gap:12px;align-items:center;justify-content:space-between}
+  .mbar .stats{display:flex;gap:12px;font-family:var(--f-mono);font-size:12.5px;flex-wrap:wrap;min-width:0}
+  .mbar .stats b{font-weight:600}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  .map{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .map .arrow{display:none}
+  .map>*{grid-column:1 !important;grid-row:auto !important}
+  .fusion{margin-top:8px}
+}
+@media (max-width:600px){
+  .scale{grid-template-columns:repeat(3,minmax(0,1fr));margin-left:0}
+  .scale.s7{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .card-h{padding:16px 16px 12px;grid-template-columns:auto minmax(0,1fr)}
+  .card-h>.chip{grid-column:2;justify-self:start}
+  .card-b{padding:16px}
+  .filecard{grid-template-columns:84px minmax(0,1fr)}
+  .filecard .thumb{width:84px}
+  .masthead .meta{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;scroll-behavior:auto !important}}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Formulir laporan kasus elektronik · Disertasi S3 Ilmu Kedokteran FKUI</p>
+      <h1>Model ANN untuk diagnosis BOO dan underactive detrusor pada pria dengan LUTS</h1>
+    </div>
+    <div class="meta">
+      <span class="chip acc">Baku emas: pressure-flow study</span>
+      <span class="chip">4 RS</span>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Halaman">
+      <button class="tab" role="tab" id="tab-btn-form" aria-selected="true" aria-controls="tab-form">Formulir subjek</button>
+      <button class="tab" role="tab" id="tab-btn-map" aria-selected="false" aria-controls="tab-map">Peta parameter</button>
+      <button class="tab" role="tab" id="tab-btn-data" aria-selected="false" aria-controls="tab-data">Data tersimpan<span class="count" id="rec-count">0</span></button>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ================= TAB: FORMULIR ================= -->
+<section id="tab-form" role="tabpanel" aria-labelledby="tab-btn-form">
+<div class="wrap workspace">
+  <nav class="rail" aria-label="Bagian formulir">
+    <ol id="rail"></ol>
+    <p class="rail-note">Angka di kanan = isian wajib yang sudah terisi. Bagian 7 opsional sesuai protokol (bila citra tersedia).</p>
+  </nav>
+
+  <div style="min-width:0">
+    <nav class="chipnav" id="chipnav" aria-label="Lompat ke bagian"></nav>
+
+    <div class="banner" id="example-banner">
+      <span><b>Data contoh fiktif.</b> Formulir terisi pasien rekaan untuk memperlihatkan alur dan perhitungan otomatis.</span>
+      <button class="btn sm" type="button" id="btn-new-top">Mulai formulir kosong</button>
+    </div>
+
+    <form id="crf" novalidate autocomplete="off">
+
+    <!-- 1 IDENTITAS -->
+    <section class="card" id="sec-1">
+      <header class="card-h"><span class="no">01</span><div><h2>Identitas pasien</h2><p>Identitas hanya untuk pencocokan rekam medis. Ekspor anonim mengganti identitas dengan kode subjek.</p></div><span class="chip" data-state="1"></span></header>
+      <div class="card-b">
+        <div class="fields">
+          <div class="field"><label for="f_rs">Rumah sakit <em class="req">wajib</em></label>
+            <select id="f_rs">
+              <option value="PSH">RSUP Persahabatan</option>
+              <option value="CM">RSUPN Dr. Cipto Mangunkusumo</option>
+              <option value="UI">RS Universitas Indonesia</option>
+              <option value="FTW">RSUP Fatmawati</option>
+            </select>
+          </div>
+          <div class="field"><label for="f_kode">Kode subjek <em class="req">wajib</em></label>
+            <div class="unit-in"><input type="text" id="f_kode" spellcheck="false"><button type="button" class="u" id="btn-regen" style="cursor:pointer" title="Buat ulang kode otomatis">↻ auto</button></div>
+            <p class="hint">Format RS-urut, mis. PSH-001</p>
+          </div>
+          <div class="field"><label for="f_tglperiksa">Tanggal Pemeriksaan <em class="req">wajib</em></label><input type="date" id="f_tglperiksa"></div>
+          <div class="field full"><label for="f_nama">Nama Pasien <em class="req">wajib</em></label><input type="text" id="f_nama"></div>
+          <div class="field"><label for="f_nrm">Nomor Rekam Medis <em class="req">wajib</em></label><input type="text" id="f_nrm" class="mono" spellcheck="false"></div>
+          <div class="field"><label for="f_tgllahir">Tanggal lahir <em class="req">wajib</em></label><input type="date" id="f_tgllahir"></div>
+          <div class="field"><span class="lbl">Usia</span><div class="readout" id="o_usia">–</div><p class="hint">Dihitung dari tanggal lahir s.d. tanggal pemeriksaan</p></div>
+          <div class="field full"><label for="f_alamat">Alamat <em class="opt">opsional</em></label><textarea id="f_alamat" rows="2"></textarea></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 SELEKSI -->
+    <section class="card" id="sec-2">
+      <header class="card-h"><span class="no">02</span><div><h2>Kriteria inklusi &amp; eksklusi</h2><p>Status kelayakan dihitung otomatis. Data tidak lengkap dinilai dari kelengkapan isian wajib.</p></div><span class="chip" data-state="2"></span></header>
+      <div class="card-b">
+        <div class="two">
+          <div class="panel"><h3>Inklusi — semua harus terpenuhi</h3>
+            <div class="checks">
+              <div class="check auto"><span class="tick" id="o_inc_age">–</span><span>Laki-laki berusia ≥18 tahun <span class="hint" id="o_inc_age_t">(dari tanggal lahir)</span></span></div>
+              <label class="check"><input type="checkbox" id="inc_rm"><span>Tercatat dalam rekam medis RS penelitian</span></label>
+              <label class="check"><input type="checkbox" id="inc_lengkap"><span>LUTS dan menjalani anamnesis, uroflowmetri, sistoskopi, USG prostat, dan urodinamik</span></label>
+            </div>
+          </div>
+          <div class="panel"><h3>Eksklusi — centang bila ada</h3>
+            <div class="checks">
+              <label class="check"><input type="checkbox" id="exc_kateter"><span>Retensi urin dengan kateter menetap atau CIC</span></label>
+              <label class="check"><input type="checkbox" id="exc_isk"><span>Infeksi saluran kemih</span></label>
+              <label class="check"><input type="checkbox" id="exc_kognitif"><span>Gangguan kognitif/psikiatrik berat sehingga IPSS tidak valid</span></label>
+              <label class="check"><input type="checkbox" id="exc_batu"><span>Batu kandung kemih atau tumor buli terkonfirmasi</span></label>
+              <label class="check"><input type="checkbox" id="exc_striktur"><span>Striktur uretra berat/obstruksi anatomis sehingga sistoskopi tidak dapat dilakukan</span></label>
+            </div>
+          </div>
+        </div>
+        <div id="o_elig" class="chip" style="justify-self:start"></div>
+      </div>
+    </section>
+
+    <!-- 3 IPSS -->
+    <section class="card" id="sec-3">
+      <header class="card-h"><span class="no">03</span><div><h2>International Prostate Symptom Score (IPSS)</h2><p>Dalam 1 bulan terakhir. Pilih satu skor per pertanyaan; subskor storage (2, 4, 7) dan voiding (1, 3, 5, 6) dihitung otomatis.</p></div><span class="chip" data-state="3"></span></header>
+      <div class="card-b">
+        <div class="ipss-strip" aria-live="polite">
+          <span>Storage <b id="o_st">–</b><span class="mono" style="color:var(--muted)">/15</span></span>
+          <span>Voiding <b id="o_vo">–</b><span class="mono" style="color:var(--muted)">/20</span></span>
+          <span>Total <b id="o_tot">–</b><span class="mono" style="color:var(--muted)">/35</span></span>
+          <span id="o_sev" class="chip">belum lengkap</span>
+          <span style="margin-left:auto">QoL <b id="o_qol">–</b><span class="mono" style="color:var(--muted)">/6</span></span>
+        </div>
+        <div class="ipss-list" id="ipss-list"></div>
+      </div>
+    </section>
+
+    <!-- 4 KOMORBID -->
+    <section class="card" id="sec-4">
+      <header class="card-h"><span class="no">04</span><div><h2>Komorbid &amp; laboratorium</h2><p>Dari rekam medis atau hasil pemeriksaan di fasilitas lain. Kode ekspor mengikuti definisi operasional: 0 = Ya, 1 = Tidak.</p></div><span class="chip" data-state="4"></span></header>
+      <div class="card-b">
+        <div class="fields">
+          <div class="field"><span class="lbl">Diabetes melitus <em class="req">wajib</em></span>
+            <div class="seg"><label><input type="radio" name="dm" value="0"><span>Ya <small>0</small></span></label><label><input type="radio" name="dm" value="1"><span>Tidak <small>1</small></span></label></div>
+            <p class="hint">Terdiagnosis dan mendapat obat antidiabetik</p>
+          </div>
+          <div class="field"><span class="lbl">Riwayat stroke <em class="req">wajib</em></span>
+            <div class="seg"><label><input type="radio" name="stroke" value="0"><span>Ya <small>0</small></span></label><label><input type="radio" name="stroke" value="1"><span>Tidak <small>1</small></span></label></div>
+            <p class="hint">Iskemik atau hemoragik, klinis/radiologis</p>
+          </div>
+          <div class="field"><span class="lbl">Penyakit saraf perifer <em class="req">wajib</em></span>
+            <div class="seg"><label><input type="radio" name="neuro" value="0"><span>Ya <small>0</small></span></label><label><input type="radio" name="neuro" value="1"><span>Tidak <small>1</small></span></label></div>
+          </div>
+          <div class="field full"><label for="f_neuroket">Keterangan kelainan neurologis <em class="opt">opsional</em></label><input type="text" id="f_neuroket" placeholder="mis. HNP lumbal, riwayat operasi tulang belakang, neuropati diabetik"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 USG -->
+    <section class="card" id="sec-5">
+      <header class="card-h"><span class="no">05</span><div><h2>Ultrasonografi prostat</h2><p>Diukur saat kandung kemih terisi &gt;100 mL. IPP diukur pada bidang midsagital, dari ujung protrusi ke dasar dinding buli.</p></div><span class="chip" data-state="5"></span></header>
+      <div class="card-b">
+        <div class="fields">
+          <div class="field"><span class="lbl">Metode</span>
+            <div class="seg"><label><input type="radio" name="usg_metode" value="TA" checked><span>Transabdominal</span></label></div>
+          </div>
+          <div class="field"><label for="f_vp">Volume prostat <em class="req">wajib</em></label><div class="unit-in"><input type="text" inputmode="decimal" id="f_vp"><span class="u">cc</span></div><p class="hint" data-hint="f_vp">Rentang wajar 10–300 cc</p></div>
+          <div class="field"><label for="f_ipp">IPP <em class="req">wajib</em></label>
+            <div class="unit-in"><input type="text" inputmode="decimal" id="f_ipp"><span class="u" style="padding:0 4px;gap:2px">
+              <span class="seg" style="gap:2px;flex-wrap:nowrap"><label><input type="radio" name="ipp_unit" value="cm" checked><span style="padding:3px 8px;font-size:12px">cm</span></label><label><input type="radio" name="ipp_unit" value="mm"><span style="padding:3px 8px;font-size:12px">mm</span></label></span>
+            </span></div>
+            <p class="hint" data-hint="f_ipp">Intravesical prostatic protrusion · disimpan dalam cm</p>
+          </div>
+          <div class="field"><span class="lbl">Derajat IPP</span><div class="readout" id="o_ippgrade">–</div><p class="hint">I &lt;0,5 cm · II 0,5–1,0 cm · III &gt;1,0 cm</p></div>
+          <label class="check full"><input type="checkbox" id="usg_buli100"><span>Volume buli saat pengukuran &gt;100 mL</span></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 UROFLOW -->
+    <section class="card" id="sec-6">
+      <header class="card-h"><span class="no">06</span><div><h2>Uroflowmetri</h2><p>Unggah tabel dan kurva hasil uroflow (ekspor PDF dari software alat, atau foto JPG cetakan). Berkas ini menjadi input cabang waveform; angka tabular diisi di bawahnya.</p></div><span class="chip" data-state="6"></span></header>
+      <div class="card-b">
+        <div id="drop-uf"></div>
+        <div class="fields">
+          <div class="field"><label for="f_qmax">Qmax <em class="req">wajib</em></label><div class="unit-in"><input type="text" inputmode="decimal" id="f_qmax"><span class="u">mL/s</span></div><p class="hint" data-hint="f_qmax"></p></div>
+          <div class="field"><label for="f_qave">Qave</label><div class="unit-in"><input type="text" inputmode="decimal" id="f_qave"><span class="u">mL/s</span></div><p class="hint" data-hint="f_qave"></p></div>
+          <div class="field"><label for="f_vv">Voided volume (VV) <em class="req">wajib</em></label><div class="unit-in"><input type="text" inputmode="decimal" id="f_vv"><span class="u">mL</span></div><p class="hint" data-hint="f_vv"></p></div>
+          <div class="field"><label for="f_pvr">Post-void residual (PVR) <em class="req">wajib</em></label><div class="unit-in"><input type="text" inputmode="decimal" id="f_pvr"><span class="u">mL</span></div><p class="hint" data-hint="f_pvr">USG buli setelah uroflow</p></div>
+          <div class="field"><label for="f_ft">Flow time</label><div class="unit-in"><input type="text" inputmode="decimal" id="f_ft"><span class="u">s</span></div></div>
+          <div class="field"><label for="f_tq">Time to Qmax</label><div class="unit-in"><input type="text" inputmode="decimal" id="f_tq"><span class="u">s</span></div></div>
+        </div>
+        <div class="two">
+          <div class="panel"><h3>Kelayakan kurva untuk analisis waveform</h3>
+            <label class="check"><input type="checkbox" id="uf_artefak"><span>Kurva banyak artefak (mengejan, gerakan, straining)</span></label>
+            <div id="o_wf" class="chip" style="justify-self:start"></div>
+            <p class="hint">Layak bila berkas terunggah, VV ≥100 mL, dan artefak minimal.</p>
+          </div>
+          <div class="panel"><h3>Data mentah waveform <span class="opt">opsional</span></h3>
+            <div id="drop-dta"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 SISTOSKOPI -->
+    <section class="card" id="sec-7">
+      <header class="card-h"><span class="no">07</span><div><h2>Citra sistoskopi</h2><p>Minimal 2 tampilan standar per area, diambil dari rekaman video. Interval dengan urodinamik harus &lt;30 hari.</p></div><span class="chip" data-state="7"></span></header>
+      <div class="card-b">
+        <div class="fields">
+          <div class="field"><label for="f_sistgl">Tanggal sistoskopi</label><input type="date" id="f_sistgl"></div>
+          <div class="field"><span class="lbl">Jenis sistoskop</span>
+            <div class="seg"><label><input type="radio" name="sis_jenis" value="Rigid"><span>Rigid</span></label><label><input type="radio" name="sis_jenis" value="Fleksibel"><span>Fleksibel</span></label></div>
+          </div>
+        </div>
+        <div class="two">
+          <div class="panel"><h3>Leher buli / uretra prostatika</h3><div id="drop-bn"></div></div>
+          <div class="panel"><h3>Dinding buli / mukosa</h3><div id="drop-wall"></div></div>
+        </div>
+        <div class="panel"><h3>Anotasi klinis <span class="opt">untuk interpretabilitas model</span></h3>
+          <div class="field"><span class="lbl">Trabekulasi buli</span>
+            <div class="seg"><label><input type="radio" name="trab" value="0"><span>Tidak ada</span></label><label><input type="radio" name="trab" value="1"><span>Ringan</span></label><label><input type="radio" name="trab" value="2"><span>Sedang</span></label><label><input type="radio" name="trab" value="3"><span>Berat</span></label></div>
+          </div>
+          <div class="checks" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+            <label class="check"><input type="checkbox" id="sis_kissing"><span>Oklusi lobus lateral (kissing lobes)</span></label>
+            <label class="check"><input type="checkbox" id="sis_medius"><span>Lobus medius / protrusi intravesika</span></label>
+            <label class="check"><input type="checkbox" id="sis_bn"><span>Leher buli tinggi</span></label>
+            <label class="check"><input type="checkbox" id="sis_divert"><span>Selula / divertikel</span></label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="form-foot">
+      <span class="hint" id="o_foot">–</span>
+      <div class="grp">
+        <button class="btn" type="button" id="btn-new">Formulir baru</button>
+        <button class="btn primary" type="submit" id="btn-save">Simpan subjek</button>
+      </div>
+    </div>
+    </form>
+  </div>
+
+  <!-- SUMMARY SHEET -->
+  <aside class="sheet" aria-label="Ringkasan subjek">
+    <div class="sheet-h">
+      <div class="lbl">Lembar ringkasan</div>
+      <div class="code" id="s_kode">–</div>
+      <div class="sub"><span class="chip" id="s_elig"></span><span class="chip" id="s_age"></span></div>
+    </div>
+    <div class="sheet-b">
+      <div class="srow">
+        <span class="k">IPSS total</span><span class="chip" id="s_sev"></span>
+        <div class="wide">
+          <div class="ipss-big"><b id="s_tot">–</b><span>/35</span><span style="margin-left:auto;font-size:13px">QoL <b id="s_qol" style="font-size:15px;color:var(--fg)">–</b>/6</span></div>
+          <div class="bar"><i class="s" id="s_bar_s" style="width:0"></i><i class="v" id="s_bar_v" style="width:0"></i></div>
+          <div class="legend"><span><i style="background:var(--warn)"></i>Storage <b id="s_st">–</b></span><span><i style="background:var(--accent)"></i>Voiding <b id="s_vo">–</b></span></div>
+        </div>
+      </div>
+      <div class="srow"><span class="k">Volume prostat</span><span class="v" id="s_vp">–</span></div>
+      <div class="srow"><span class="k">IPP</span><span class="v" id="s_ipp">–</span></div>
+      <div class="srow"><span class="k">Qmax · VV · PVR</span><span class="v" id="s_uf">–</span></div>
+      <div class="srow"><span class="k">Berkas uroflow</span><span class="chip" id="s_uffile"></span></div>
+      <div class="srow">
+        <span class="k">Kelengkapan isian wajib</span><span class="v" id="s_done">–</span>
+        <div class="wide progress"><i id="s_prog"></i></div>
+      </div>
+    </div>
+    <div class="sheet-f">
+      <button class="btn primary" type="button" id="btn-save-2">Simpan subjek</button>
+    </div>
+  </aside>
+</div>
+
+<div class="mbar" aria-label="Ringkasan singkat">
+  <div class="stats"><span>IPSS <b id="m_ipss">–</b></span><span>VP <b id="m_vp">–</b></span><span>Qmax <b id="m_qmax">–</b></span><span><b id="m_done">–</b></span></div>
+  <button class="btn primary sm" type="button" id="btn-save-3">Simpan</button>
+</div>
+</section>
+
+<!-- ================= TAB: PETA PARAMETER ================= -->
+<section id="tab-map" role="tabpanel" aria-labelledby="tab-btn-map" hidden>
+<div class="wrap" style="padding-block:24px 64px">
+  <div class="section-title" style="margin-top:0"><h2>Dari formulir ke model</h2><p>Lima sumber data, tiga cabang jaringan, satu lapisan fusi, dua label biner.</p></div>
+  <div class="map">
+    <div class="mod" style="grid-row:1;grid-column:1"><h3>Data klinis <small>Bagian 1–4</small></h3><ul>
+      <li>Usia<em>th</em></li><li>IPSS storage<em>0–15</em></li><li>IPSS voiding<em>0–20</em></li><li>IPSS total<em>0–35</em></li><li>QoL<em>0–6</em></li><li>Diabetes<em>0/1</em></li><li>Stroke<em>0/1</em></li><li>Saraf perifer<em>0/1</em></li></ul></div>
+    <div class="mod" style="grid-row:2;grid-column:1"><h3>USG prostat <small>Bagian 5</small></h3><ul><li>Volume prostat<em>cc</em></li><li>IPP<em>cm</em></li><li>Derajat IPP<em>I–III</em></li></ul></div>
+    <div class="mod" style="grid-row:3;grid-column:1"><h3>Uroflow tabular <small>Bagian 6</small></h3><ul><li>Qmax<em>mL/s</em></li><li>Qave<em>mL/s</em></li><li>VV<em>mL</em></li><li>PVR<em>mL</em></li><li>Flow time<em>s</em></li><li>Time to Qmax<em>s</em></li></ul></div>
+    <div class="mod" style="grid-row:4;grid-column:1"><h3>Waveform uroflow <small>Bagian 6</small></h3><ul><li>Kurva PDF/JPG</li><li>Berkas .dta mentah</li><li>Syarat VV ≥100 mL</li></ul></div>
+    <div class="mod" style="grid-row:5;grid-column:1"><h3>Citra sistoskopi <small>Bagian 7</small></h3><ul><li>Leher buli / uretra prostatika<em>≥2</em></li><li>Dinding buli<em>≥2</em></li><li>Interval &lt;30 hari</li></ul></div>
+
+    <div class="arrow" style="grid-row:1/4;grid-column:2">→</div>
+    <div class="arrow" style="grid-row:4;grid-column:2">→</div>
+    <div class="arrow" style="grid-row:5;grid-column:2">→</div>
+    <div class="branch" style="grid-row:1/4;grid-column:3"><b>Multilayer perceptron</b><span>Klinis + USG + uroflow tabular; imputasi median/modus dan standardisasi dari data latih per fold</span></div>
+    <div class="branch" style="grid-row:4;grid-column:3"><b>1D-CNN + temporal attention</b><span>Segmentasi miksi, normalisasi sumbu waktu &amp; laju</span></div>
+    <div class="branch" style="grid-row:5;grid-column:3"><b>2D-CNN</b><span>Seleksi frame, de-identifikasi, resize, augmentasi ringan</span></div>
+    <div class="arrow" style="grid-row:1/6;grid-column:4">→</div>
+
+    <div class="fusion">
+      <div class="core"><b>Late fusion</b><span>Gabungan representasi tiap cabang · focal loss · nested stratified 5-fold CV</span></div>
+      <div class="outs"><div class="out"><b>BOO</b><span>ya / tidak</span></div><div class="out"><b>UD</b><span>ya / tidak</span></div></div>
+      <div class="gt"><strong>Baku emas — urodinamik PFS (dicatat di luar formulir ini)</strong>
+        <span><code>BOOI = Pdet@Qmax − 2·Qmax</code> → &gt;40 obstruksi; 20–40 equivocal (obstruksi bila Pdet@Qmax ≥40); &lt;20 tidak</span>
+        <span><code>BCI = Pdet@Qmax + 5·Qmax</code> → &lt;100 kontraktilitas lemah</span>
+        <span>Tidak mampu berkemih: Pdet max ≥40 → BOO; &lt;40 → UD</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title"><h2>Kamus data</h2><p>Nama kolom ini dipakai di berkas ekspor CSV dan tabel dummy Lampiran 4.</p></div>
+  <div class="tablebox"><table id="dict"><thead><tr><th>Kolom CSV</th><th>Variabel</th><th>Skala</th><th>Satuan / kode</th><th>Sumber</th><th>Bagian</th></tr></thead><tbody></tbody></table></div>
+</div>
+</section>
+
+<!-- ================= TAB: DATA ================= -->
+<section id="tab-data" role="tabpanel" aria-labelledby="tab-btn-data" hidden>
+<div class="wrap" style="padding-block:0 64px">
+  <div class="toolbar">
+    <div><h2 style="font-size:20px">Subjek tersimpan</h2><p class="note" style="margin:4px 0 0">Data hanya ada di tab browser ini selama halaman terbuka. Ekspor sebelum menutup.</p></div>
+    <div class="grp">
+      <button class="btn" type="button" id="btn-csv">Ekspor CSV lengkap</button>
+      <button class="btn primary" type="button" id="btn-zip">Ekspor paket anonim (.zip)</button>
+    </div>
+  </div>
+  <div class="tablebox"><table id="rec-table"><thead><tr><th>Kode</th><th>Rumah sakit</th><th>Usia</th><th>IPSS S/V/T</th><th>QoL</th><th>VP cc</th><th>IPP cm</th><th>Qmax</th><th>VV</th><th>PVR</th><th>Berkas</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="empty" id="rec-empty"><strong>Belum ada subjek tersimpan</strong><span>Isi formulir lalu tekan “Simpan subjek”. Baris akan muncul di sini dan siap diekspor.</span><button class="btn sm" type="button" id="btn-goto-form">Buka formulir</button></div>
+  </div>
+  <p class="note" style="margin-top:12px">Paket anonim berisi <span class="mono">dataset_anonim.csv</span>, <span class="mono">kamus_data.csv</span>, dan berkas yang diberi nama ulang dengan kode subjek (<span class="mono">uroflow/PSH-001_uroflow.pdf</span>, <span class="mono">sistoskopi/…</span>). Nama, NRM, tanggal lahir, dan alamat tidak disertakan.</p>
+  <p class="note warn">PDF uroflow bisa memuat nama pasien di kop laporan. Periksa atau crop sebelum paket dibagikan ke tim FASILKOM.</p>
+</div>
+</section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="modal" hidden><div class="box"><h3 id="modal-t">Salin data</h3><p class="note" id="modal-p"></p><textarea id="modal-ta" readonly></textarea><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" id="modal-copy">Salin</button><button class="btn primary" type="button" id="modal-close">Tutup</button></div></div></div>
+
+<script>
+(function(){
+"use strict";
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+
+/* ---------------- Konstanta penelitian ---------------- */
+const SITES={PSH:"RSUP Persahabatan",CM:"RSUPN Dr. Cipto Mangunkusumo",UI:"RS Universitas Indonesia",FTW:"RSUP Fatmawati"};
+const FREQ=["Tidak pernah","Kurang dari sekali dalam lima kali","Kurang dari setengah","Kadang-kadang (±50%)","Lebih dari setengah","Hampir selalu"];
+const NOCT=["Tidak pernah","1 kali","2 kali","3 kali","4 kali","5 kali atau lebih"];
+const QOL=["Senang sekali","Senang","Pada umumnya puas","Campur: puas & tidak","Pada umumnya tidak puas","Tidak senang","Buruk sekali"];
+const IPSS=[
+ {n:1,t:"Seberapa sering Anda merasa masih ada sisa selesai kencing?",d:"V",s:"Pengosongan tidak lampias"},
+ {n:2,t:"Seberapa sering Anda harus kembali kencing dalam waktu kurang dari 2 jam setelah selesai kencing?",d:"S",s:"Frekuensi"},
+ {n:3,t:"Seberapa sering Anda mendapatkan bahwa Anda kencing terputus-putus?",d:"V",s:"Intermitensi"},
+ {n:4,t:"Seberapa sering Anda merasa sulit untuk menahan kencing Anda?",d:"S",s:"Urgensi"},
+ {n:5,t:"Seberapa sering pancaran kencing Anda lemah?",d:"V",s:"Pancaran lemah"},
+ {n:6,t:"Seberapa sering Anda harus mengejan untuk mulai kencing?",d:"V",s:"Mengejan"},
+ {n:7,t:"Seberapa sering Anda harus bangun untuk kencing, sejak mulai tidur pada malam hari hingga bangun di pagi hari?",d:"S",s:"Nokturia"}
+];
+const RANGES={f_vp:[5,400,"cc"],f_qmax:[0,60,"mL/s"],f_qave:[0,40,"mL/s"],f_vv:[0,1200,"mL"],f_pvr:[0,2000,"mL"],f_ft:[0,600,"s"],f_tq:[0,300,"s"]};
+const SECTIONS=[[1,"Identitas"],[2,"Seleksi"],[3,"IPSS"],[4,"Komorbid"],[5,"USG prostat"],[6,"Uroflowmetri"],[7,"Sistoskopi"]];
+
+/* ---------------- Bangun IPSS ---------------- */
+function buildIPSS(){
+  const host=$("#ipss-list"); let h="";
+  IPSS.forEach(q=>{
+    const labels=q.n===7?NOCT:FREQ;
+    h+=`<fieldset class="q" id="q${q.n}"><legend><span class="qn">${q.n}</span><span class="qt">${q.t}</span><span class="tags"><span class="tag ${q.d==="S"?"s":"v"}">${q.d==="S"?"Storage":"Voiding"}</span><span class="tag qol">${q.s}</span></span></legend><div class="scale">`;
+    labels.forEach((l,i)=>{h+=`<label><input type="radio" name="ipss${q.n}" value="${i}"><span class="opt-box"><b>${i}</b><small>${l}</small></span></label>`;});
+    h+=`</div></fieldset>`;
+  });
+  h+=`<fieldset class="q" id="q8"><legend><span class="qn">QoL</span><span class="qt">Seandainya Anda harus menghabiskan sisa hidup dengan fungsi kencing seperti saat ini, bagaimana perasaan Anda?</span><span class="tags"><span class="tag qol">Kualitas hidup · tidak masuk skor total</span></span></legend><div class="scale s7">`;
+  QOL.forEach((l,i)=>{h+=`<label><input type="radio" name="qol" value="${i}"><span class="opt-box"><b>${i}</b><small>${l}</small></span></label>`;});
+  h+=`</div></fieldset>`;
+  host.innerHTML=h;
+}
+
+/* ---------------- Unggahan ---------------- */
+let files={uf:null,dta:null,bn:[],wall:[]};
+const urlMap=new WeakMap();
+function objURL(f){ if(!urlMap.has(f)) urlMap.set(f,URL.createObjectURL(f)); return urlMap.get(f); }
+const DROPS={
+  uf:{el:"#drop-uf",multi:false,ext:["pdf","jpg","jpeg"],accept:"application/pdf,image/jpeg,.pdf,.jpg,.jpeg",title:"Unggah tabel & kurva uroflow",hint:"PDF hasil ekspor alat atau foto JPG cetakan. Seret berkas ke sini, atau ketuk untuk memilih / memotret.",req:true},
+  dta:{el:"#drop-dta",multi:false,ext:["dta","csv","txt"],accept:".dta,.csv,.txt",title:"Berkas .dta dari alat",hint:"Untuk pembacaan sinyal mentah bila tersedia.",compact:true},
+  bn:{el:"#drop-bn",multi:true,ext:["jpg","jpeg","png"],accept:"image/jpeg,image/png,.jpg,.jpeg,.png",title:"Tambah citra",hint:"JPG/PNG, minimal 2",compact:true},
+  wall:{el:"#drop-wall",multi:true,ext:["jpg","jpeg","png"],accept:"image/jpeg,image/png,.jpg,.jpeg,.png",title:"Tambah citra",hint:"JPG/PNG, minimal 2",compact:true}
+};
+const ICON_UP=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>`;
+function extOf(name){const m=/\.([a-z0-9]+)$/i.exec(name||"");return m?m[1].toLowerCase():"";}
+function fmtSize(b){return b<1024*1024?(b/1024).toFixed(0)+" KB":(b/1048576).toFixed(1)+" MB";}
+
+function renderDrop(key){
+  const cfg=DROPS[key], host=$(cfg.el), val=files[key];
+  if(!host) return;
+  let h="";
+  if(cfg.multi){
+    if(val.length){h+=`<div class="gallery">`+val.map((f,i)=>`<figure><img src="${objURL(f)}" alt="Citra ${i+1}"><figcaption>${esc(f.name)}</figcaption><button type="button" data-rm="${key}" data-i="${i}" aria-label="Hapus citra ${i+1}">×</button></figure>`).join("")+`</div>`;}
+    h+=dropHTML(key,cfg, val.length? `${val.length} citra · tambah lagi` : cfg.title);
+  } else if(val){
+    const isPdf=extOf(val.name)==="pdf";
+    if(cfg.compact && !isPdf){
+      h+=`<div class="filecard" style="grid-template-columns:minmax(0,1fr)"><div><div class="fname">${esc(val.name)}</div><div class="fmeta">${fmtSize(val.size)}</div><div class="acts"><button type="button" class="btn sm" data-pick="${key}">Ganti</button><button type="button" class="btn sm danger" data-clear="${key}">Hapus</button></div></div></div>`;
+    } else {
+      h+=`<div class="filecard"><div class="thumb" id="thumb-${key}">${isPdf?"PDF":`<img src="${objURL(val)}" alt="Pratinjau ${esc(val.name)}">`}</div><div style="min-width:0"><div class="fname">${esc(val.name)}</div><div class="fmeta" id="meta-${key}">${isPdf?"PDF":"JPG"} · ${fmtSize(val.size)}</div><div class="acts"><button type="button" class="btn sm" data-pick="${key}">Ganti berkas</button><button type="button" class="btn sm danger" data-clear="${key}">Hapus</button></div><p class="hint" style="margin-top:8px">Akan disimpan sebagai <span class="mono">${exportName(key,val,0)}</span></p></div></div>`;
+    }
+    h+=`<input type="file" id="file-${key}" accept="${cfg.accept}" hidden>`;
+  } else {
+    h+=dropHTML(key,cfg,cfg.title);
+  }
+  host.innerHTML=h;
+  if(!cfg.multi && val && extOf(val.name)==="pdf") pdfThumb(key,val);
+}
+function dropHTML(key,cfg,title){
+  return `<label class="drop${cfg.compact?" compact":""}" data-drop="${key}"><input type="file" id="file-${key}" accept="${cfg.accept}" ${cfg.multi?"multiple":""}><span class="ico">${ICON_UP}</span><span><strong>${title}</strong><span class="hint" style="display:block">${cfg.hint}</span></span></label>`;
+}
+function exportName(key,f,i){
+  const code=($("#f_kode").value||"KODE").trim(); const e=extOf(f.name)==="jpeg"?"jpg":extOf(f.name);
+  return {uf:`uroflow/${code}_uroflow.${e}`,dta:`waveform_dta/${code}.${e}`,bn:`sistoskopi/${code}_BN_${i+1}.${e}`,wall:`sistoskopi/${code}_DINDING_${i+1}.${e}`}[key];
+}
+function addFiles(key,list){
+  const cfg=DROPS[key]; const ok=[]; let rejected=0;
+  Array.from(list||[]).forEach(f=>{ if(cfg.ext.includes(extOf(f.name)) && f.size<=25*1048576) ok.push(f); else rejected++; });
+  if(rejected) toast(`Format belum didukung. Gunakan ${cfg.ext.map(x=>x.toUpperCase()).join(" / ")} (maks. 25 MB).`);
+  if(!ok.length) return;
+  if(cfg.multi) files[key]=files[key].concat(ok); else files[key]=ok[0];
+  renderDrop(key); update();
+}
+document.addEventListener("change",e=>{
+  const t=e.target; if(t.type==="file" && t.id.startsWith("file-")){ addFiles(t.id.slice(5),t.files); }
+});
+document.addEventListener("click",e=>{
+  const rm=e.target.closest("[data-rm]"); if(rm){ files[rm.dataset.rm].splice(+rm.dataset.i,1); renderDrop(rm.dataset.rm); update(); return; }
+  const cl=e.target.closest("[data-clear]"); if(cl){ files[cl.dataset.clear]=null; renderDrop(cl.dataset.clear); update(); return; }
+  const pk=e.target.closest("[data-pick]"); if(pk){ const inp=$("#file-"+pk.dataset.pick); if(inp) inp.click(); }
+});
+["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{const d=e.target.closest&&e.target.closest("[data-drop]"); if(d){e.preventDefault(); d.classList.add("over");}}));
+["dragleave","drop"].forEach(ev=>document.addEventListener(ev,e=>{const d=e.target.closest&&e.target.closest("[data-drop]"); if(d){d.classList.remove("over"); if(ev==="drop"){e.preventDefault(); addFiles(d.dataset.drop,e.dataTransfer.files);}}}));
+
+/* Pratinjau PDF halaman 1 (pdf.js dimuat saat dibutuhkan) */
+const PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+let pdfLoading=null;
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+function getPdf(){ if(!pdfLoading){ pdfLoading=loadScript(PDFJS+"pdf.min.js").then(()=>loadScript(PDFJS+"pdf.worker.min.js")).then(()=>{const lib=window.pdfjsLib||window["pdfjs-dist/build/pdf"]; lib.GlobalWorkerOptions.workerSrc=PDFJS+"pdf.worker.min.js"; return lib;}); } return pdfLoading; }
+async function pdfThumb(key,f){
+  try{
+    const lib=await Promise.race([getPdf(),new Promise((_,r)=>setTimeout(()=>r("t"),8000))]);
+    const doc=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+    const page=await doc.getPage(1); const vp0=page.getViewport({scale:1}); const vp=page.getViewport({scale:360/vp0.width});
+    const c=document.createElement("canvas"); c.width=vp.width; c.height=vp.height;
+    await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
+    if(files[key]!==f) return;
+    const th=$("#thumb-"+key); if(th){th.innerHTML=""; th.appendChild(c);}
+    const m=$("#meta-"+key); if(m) m.textContent=`PDF · ${doc.numPages} halaman · ${fmtSize(f.size)}`;
+  }catch(err){ const m=$("#meta-"+key); if(m && files[key]===f) m.textContent=`PDF · ${fmtSize(f.size)} · pratinjau tidak tersedia`; }
+}
+
+/* ---------------- Snapshot & turunan ---------------- */
+function snapshot(){
+  const v={};
+  $$("#crf input, #crf select, #crf textarea").forEach(el=>{
+    if(el.type==="file") return;
+    if(el.type==="radio"){ if(!(el.name in v)) v[el.name]=""; if(el.checked) v[el.name]=el.value; return; }
+    if(el.type==="checkbox"){ v[el.id]=el.checked; return; }
+    if(el.id) v[el.id]=el.value;
+  });
+  return v;
+}
+function restore(v){
+  $$("#crf input, #crf select, #crf textarea").forEach(el=>{
+    if(el.type==="file") return;
+    if(el.type==="radio"){ el.checked = v[el.name]===el.value; return; }
+    if(el.type==="checkbox"){ el.checked=!!v[el.id]; return; }
+    if(el.id) el.value = (el.id in v)? v[el.id] : (el.tagName==="SELECT"? el.options[0].value : "");
+  });
+}
+function num(x){ if(x==null) return null; const s=String(x).trim().replace(",","."); if(s==="") return null; const k=Number(s); return Number.isFinite(k)?k:null; }
+function ageYears(dob,ref){
+  if(!dob) return null; const b=new Date(dob+"T00:00:00"), r=ref? new Date(ref+"T00:00:00") : new Date();
+  if(isNaN(b)||isNaN(r)) return null; let a=r.getFullYear()-b.getFullYear(); const m=r.getMonth()-b.getMonth(); if(m<0||(m===0&&r.getDate()<b.getDate())) a--; return a>=0&&a<130?a:null;
+}
+function daysBetween(a,b){ if(!a||!b) return null; const x=new Date(a+"T00:00:00"), y=new Date(b+"T00:00:00"); if(isNaN(x)||isNaN(y)) return null; return Math.round((y-x)/86400000); }
+
+function derive(v,f){
+  const d={};
+  d.age=ageYears(v.f_tgllahir,v.f_tglperiksa);
+  d.q=IPSS.map(q=> v["ipss"+q.n]===""||v["ipss"+q.n]==null? null : Number(v["ipss"+q.n]));
+  const sum=idx=> idx.every(i=>d.q[i-1]!==null)? idx.reduce((a,i)=>a+d.q[i-1],0) : null;
+  d.storage=sum([2,4,7]); d.voiding=sum([1,3,5,6]);
+  d.total=(d.storage!==null&&d.voiding!==null)? d.storage+d.voiding : null;
+  d.partS=[2,4,7].reduce((a,i)=>a+(d.q[i-1]||0),0); d.partV=[1,3,5,6].reduce((a,i)=>a+(d.q[i-1]||0),0);
+  d.severity=d.total===null?null: d.total<=7?"Ringan": d.total<=19?"Sedang":"Berat";
+  d.qol=v.qol===""||v.qol==null?null:Number(v.qol);
+  d.vp=num(v.f_vp);
+  const ipp=num(v.f_ipp); d.ippCm=ipp===null?null:(v.ipp_unit==="mm"? ipp/10 : ipp);
+  d.ippGrade=d.ippCm===null?null: d.ippCm<0.5?"I": d.ippCm<=1.0?"II":"III";
+  d.qmax=num(v.f_qmax); d.qave=num(v.f_qave); d.vv=num(v.f_vv); d.pvr=num(v.f_pvr); d.ft=num(v.f_ft); d.tq=num(v.f_tq);
+  d.wfOk = !f.uf? null : (d.vv!==null && d.vv>=100 && !v.uf_artefak);
+  // kelayakan
+  d.incAge = d.age===null? null : d.age>=18;
+  d.exc=["exc_kateter","exc_isk","exc_kognitif","exc_batu","exc_striktur"].filter(k=>v[k]);
+  const incAll = d.incAge===true && v.inc_rm && v.inc_lengkap;
+  d.eligible = (d.exc.length || d.incAge===false)? false : incAll? true : null;
+  // kelengkapan
+  const R={
+    1:[v.f_rs,(v.f_kode||"").trim(),(v.f_nama||"").trim(),(v.f_nrm||"").trim(),v.f_tgllahir,v.f_tglperiksa],
+    2:[v.inc_rm,v.inc_lengkap,d.incAge!==null],
+    3:[...d.q.map(x=>x!==null),d.qol!==null],
+    4:[v.dm,v.stroke,v.neuro],
+    5:[d.vp!==null,d.ippCm!==null],
+    6:[!!f.uf,d.qmax!==null,d.vv!==null,d.pvr!==null],
+    7:[!!v.f_sistgl,f.bn.length>=2,f.wall.length>=2]
+  };
+  d.sec={}; let done=0,tot=0;
+  Object.keys(R).forEach(k=>{const a=R[k]; const c=a.filter(Boolean).length; d.sec[k]={done:c,total:a.length}; if(k!=="7"){done+=c;tot+=a.length;}});
+  d.reqDone=done; d.reqTotal=tot;
+  d.status = d.eligible===false? "Tidak layak" : (done===tot && d.eligible===true)? "Lengkap" : "Belum lengkap";
+  return d;
+}
+
+/* ---------------- Render ---------------- */
+function setChip(el,text,cls){ if(!el) return; el.className="chip"+(cls?" "+cls:""); el.innerHTML=text? `<span class="dot"></span>${text}`:""; el.hidden=!text; }
+function fx(x,dp=1){ if(x===null||x===undefined) return "–"; const s=Number.isInteger(x)? String(x) : x.toFixed(dp); return s.replace(".",","); }
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+function buildNav(){
+  $("#rail").innerHTML=SECTIONS.map(([n,t])=>`<li><a href="#sec-${n}" data-nav="${n}"><span class="no">${n}</span><span>${t}</span><span class="frac" data-frac="${n}"></span></a></li>`).join("");
+  $("#chipnav").innerHTML=SECTIONS.map(([n,t])=>`<a href="#sec-${n}" class="chip" data-cnav="${n}">${n} · ${t}</a>`).join("");
+}
+document.addEventListener("click",e=>{ const a=e.target.closest("a[href^='#sec-']"); if(a){ e.preventDefault(); const t=document.getElementById(a.getAttribute("href").slice(1)); if(t) t.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"}); }});
+
+function rangeHints(v){
+  Object.keys(RANGES).forEach(id=>{
+    const el=document.getElementById(id); if(!el) return; const [lo,hi,u]=RANGES[id]; const raw=(v[id]||"").trim(); const x=num(raw);
+    const hint=document.querySelector(`[data-hint="${id}"]`);
+    let bad=false,msg=null; if(hint && !("base" in hint.dataset)) hint.dataset.base=hint.textContent;
+    if(raw!=="" && x===null){bad=true;msg="Isi dengan angka, mis. 12,5";}
+    else if(x!==null && (x<lo||x>hi)){bad=true;msg=`Di luar rentang wajar ${lo}–${hi} ${u}. Periksa kembali.`;}
+    el.classList.toggle("bad",bad);
+    if(hint){ hint.textContent=msg||hint.dataset.base; hint.className="hint"+(bad?" bad":""); }
+  });
+  // IPP: kemungkinan salah satuan
+  const ipp=num(v.f_ipp), h=document.querySelector('[data-hint="f_ipp"]');
+  if(!("base" in h.dataset)) h.dataset.base=h.textContent;
+  if(ipp!==null && v.ipp_unit==="cm" && ipp>4){ h.textContent=`${fx(ipp)} cm terlalu besar — mungkin dalam mm? Ganti satuan ke mm.`; h.className="hint warn"; }
+  else if(ipp!==null && v.ipp_unit==="mm"){ h.textContent=`= ${fx(ipp/10,2)} cm (disimpan dalam cm)`; h.className="hint"; }
+  else { h.textContent=h.dataset.base; h.className="hint"; }
+  // VV untuk waveform
+  const vh=document.querySelector('[data-hint="f_vv"]'); const vv=num(v.f_vv);
+  if(vv!==null && vv<100 && !$("#f_vv").classList.contains("bad")){ vh.textContent="VV <100 mL: kurva tidak masuk analisis waveform"; vh.className="hint warn"; }
+  else if(!$("#f_vv").classList.contains("bad")){ vh.textContent=vh.dataset.base||""; vh.className="hint"; }
+}
+
+let isExample=false;
+function update(){
+  const v=snapshot(), d=derive(v,files);
+  // identitas
+  $("#o_usia").textContent = d.age===null? "–" : `${d.age} tahun`;
+  // seleksi
+  const ta=$("#o_inc_age"); ta.className="tick"+(d.incAge===true?" ok":d.incAge===false?" bad":""); ta.textContent=d.incAge===true?"✓":d.incAge===false?"✕":"–";
+  $("#o_inc_age_t").textContent = d.age===null? "(isi tanggal lahir di Bagian 1)" : `(${d.age} tahun)`;
+  const eligTxt = d.eligible===true?"Memenuhi kriteria" : d.eligible===false? (d.exc.length? `Tidak layak · ${d.exc.length} kriteria eksklusi` : "Tidak layak · usia <18 tahun") : "Kelayakan belum dinilai";
+  const eligCls = d.eligible===true?"ok":d.eligible===false?"bad":"";
+  setChip($("#o_elig"),eligTxt,eligCls); setChip($("#s_elig"),d.eligible===true?"Layak":d.eligible===false?"Tidak layak":"Belum dinilai",eligCls);
+  setChip($("#s_age"), d.age===null? "Usia –" : `${d.age} th`, "");
+  // IPSS
+  $("#o_st").textContent=d.storage??(d.partS?d.partS+"…":"–"); $("#o_vo").textContent=d.voiding??(d.partV?d.partV+"…":"–");
+  $("#o_tot").textContent=d.total??"–"; $("#o_qol").textContent=d.qol??"–";
+  const sevCls={Ringan:"ok",Sedang:"warn",Berat:"bad"}[d.severity]||"";
+  const answered=d.q.filter(x=>x!==null).length;
+  setChip($("#o_sev"), d.severity? `Gejala ${d.severity.toLowerCase()}` : `${answered}/7 terjawab`, sevCls);
+  setChip($("#s_sev"), d.severity? d.severity : `${answered}/7`, sevCls);
+  $("#s_tot").textContent=d.total??(answered? d.partS+d.partV : "–");
+  $("#s_qol").textContent=d.qol??"–"; $("#s_st").textContent=d.storage??"–"; $("#s_vo").textContent=d.voiding??"–";
+  $("#s_bar_s").style.width=(d.partS/35*100)+"%"; $("#s_bar_v").style.width=(d.partV/35*100)+"%";
+  // USG
+  $("#o_ippgrade").innerHTML = d.ippGrade? `Derajat ${d.ippGrade} <span style="color:var(--muted);margin-left:6px;font-weight:400">(${fx(d.ippCm,2)} cm)</span>` : "–";
+  $("#s_vp").innerHTML = d.vp===null?"–":`${fx(d.vp)} <small>cc</small>`;
+  $("#s_ipp").innerHTML = d.ippCm===null?"–":`${fx(d.ippCm,2)} <small>cm · ${d.ippGrade}</small>`;
+  // Uroflow
+  $("#s_uf").innerHTML = [d.qmax,d.vv,d.pvr].every(x=>x===null)? "–" : `${fx(d.qmax)} · ${fx(d.vv,0)} · ${fx(d.pvr,0)}`;
+  setChip($("#s_uffile"), files.uf? (extOf(files.uf.name)==="pdf"?"PDF terunggah":"JPG terunggah") : "Belum ada", files.uf?"ok":"warn");
+  setChip($("#o_wf"), d.wfOk===null? "Menunggu berkas uroflow" : d.wfOk? "Layak untuk analisis waveform" : "Tidak layak untuk waveform", d.wfOk===null?"":d.wfOk?"ok":"warn");
+  // kode & kelengkapan
+  $("#s_kode").textContent=(v.f_kode||"").trim()||"Tanpa kode";
+  const pct=Math.round(d.reqDone/d.reqTotal*100);
+  $("#s_done").textContent=`${d.reqDone}/${d.reqTotal}`; $("#s_prog").style.width=pct+"%";
+  $("#o_foot").textContent=`Isian wajib ${d.reqDone}/${d.reqTotal} · status: ${d.status}`;
+  SECTIONS.forEach(([n])=>{
+    const s=d.sec[n]; const full=s.done===s.total, part=s.done>0;
+    const a=document.querySelector(`[data-nav="${n}"]`); if(a){ a.dataset.done=full?"full":part?"part":"none"; }
+    const fr=document.querySelector(`[data-frac="${n}"]`); if(fr) fr.textContent = (n===7 && !full)? "opsional" : `${s.done}/${s.total}`;
+    const c=document.querySelector(`[data-cnav="${n}"]`); if(c) c.className="chip"+(full?" ok":"");
+    setChip(document.querySelector(`[data-state="${n}"]`), full? "Lengkap" : (n===7? `${s.done}/${s.total} · opsional` : `${s.done}/${s.total}`), full?"ok":"");
+  });
+  // bar mobile
+  $("#m_ipss").textContent=d.total??"–"; $("#m_vp").textContent=d.vp===null?"–":fx(d.vp); $("#m_qmax").textContent=d.qmax===null?"–":fx(d.qmax); $("#m_done").textContent=pct+"%";
+  rangeHints(v);
+  return {v,d};
+}
+
+/* ---------------- Kode subjek ---------------- */
+let records=[];
+function autoCode(){
+  const v=snapshot(); const pre=`${v.f_rs||"PSH"}-`;
+  const used=records.map(r=>r.kode).filter(k=>k.startsWith(pre)).map(k=>parseInt(k.slice(pre.length),10)).filter(Number.isFinite);
+  const next=(used.length?Math.max(...used):0)+1; return pre+String(next).padStart(3,"0");
+}
+let codeTouched=false;
+$("#f_kode").addEventListener("input",()=>{codeTouched=true;});
+$("#btn-regen").addEventListener("click",()=>{codeTouched=false; $("#f_kode").value=autoCode(); refreshNames(); update();});
+function refreshNames(){ Object.keys(DROPS).forEach(k=>{ if(!DROPS[k].multi && files[k]) { const p=$(`${DROPS[k].el} .hint .mono`); if(p) p.textContent=exportName(k,files[k],0);} }); }
+
+/* ---------------- Formulir baru / contoh ---------------- */
+function todayISO(){ const t=new Date(); return new Date(t.getTime()-t.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function blankForm(){
+  restore({f_rs:"PSH",usg_metode:"TA",ipp_unit:"cm",f_tglperiksa:todayISO()});
+  files={uf:null,dta:null,bn:[],wall:[]}; Object.keys(DROPS).forEach(renderDrop);
+  codeTouched=false; $("#f_kode").value=autoCode();
+  isExample=false; $("#example-banner").hidden=true; update();
+}
+function exampleForm(){
+  const t=todayISO(); const shift=(n)=>{const x=new Date(t+"T00:00:00"); x.setDate(x.getDate()+n); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10);};
+  restore({f_rs:"PSH",f_kode:"PSH-001",f_tglperiksa:t,f_nama:"Contoh Pasien (fiktif)",f_nrm:"CONTOH-0001",f_tgllahir:"1958-03-12",f_alamat:"",
+    inc_rm:true,inc_lengkap:true,ipss1:"3",ipss2:"3",ipss3:"2",ipss4:"2",ipss5:"4",ipss6:"3",ipss7:"3",qol:"4",
+    dm:"1",stroke:"1",neuro:"1",usg_metode:"TA",f_vp:"58",f_ipp:"1,2",ipp_unit:"cm",usg_buli100:true,
+    f_qmax:"7,8",f_qave:"4,1",f_vv:"215",f_pvr:"90",f_ft:"52",f_tq:"14",f_sistgl:shift(-7),sis_jenis:"Rigid",trab:"2",sis_medius:true});
+  files={uf:null,dta:null,bn:[],wall:[]}; Object.keys(DROPS).forEach(renderDrop);
+  codeTouched=true; isExample=true; $("#example-banner").hidden=false; update();
+}
+$("#btn-new").addEventListener("click",blankForm);
+$("#btn-new-top").addEventListener("click",blankForm);
+["f_rs"].forEach(id=>$("#"+id).addEventListener("change",()=>{ if(!codeTouched){ $("#f_kode").value=autoCode(); refreshNames(); } }));
+$("#f_kode").addEventListener("change",refreshNames);
+
+/* ---------------- Simpan ---------------- */
+function saveRecord(){
+  const {v,d}=update(); const kode=(v.f_kode||"").trim();
+  if(!kode){ toast("Isi kode subjek dulu (Bagian 1)."); $("#f_kode").focus(); return; }
+  const rec={kode,v,d,files:{uf:files.uf,dta:files.dta,bn:files.bn.slice(),wall:files.wall.slice()},example:isExample,savedAt:new Date().toISOString()};
+  const i=records.findIndex(r=>r.kode===kode); const isUpdate=i>=0;
+  if(isUpdate) records[i]=rec; else records.push(rec);
+  renderTable();
+  toast(`${kode} ${isUpdate?"diperbarui":"tersimpan"} · ${d.status}${d.status!=="Lengkap"?` (${d.reqDone}/${d.reqTotal} wajib)`:""}`);
+}
+$("#crf").addEventListener("submit",e=>{e.preventDefault(); saveRecord();});
+$("#btn-save-2").addEventListener("click",saveRecord);
+$("#btn-save-3").addEventListener("click",saveRecord);
+$("#crf").addEventListener("input",update); $("#crf").addEventListener("change",update);
+
+/* ---------------- Tabel data ---------------- */
+function renderTable(){
+  $("#rec-count").textContent=records.length;
+  const tb=$("#rec-table tbody"); $("#rec-empty").hidden=records.length>0;
+  tb.innerHTML=records.map((r,i)=>{const d=r.d; const nf=(r.files.uf?1:0)+(r.files.dta?1:0)+r.files.bn.length+r.files.wall.length;
+    const st={Lengkap:"ok","Belum lengkap":"warn","Tidak layak":"bad"}[d.status];
+    return `<tr><td class="mono"><b>${esc(r.kode)}</b>${r.example?' <span class="chip" style="margin-left:4px">contoh</span>':""}</td><td>${esc(SITES[r.v.f_rs]||r.v.f_rs||"")}</td><td class="n">${d.age??"–"}</td><td class="n">${d.storage??"–"}/${d.voiding??"–"}/${d.total??"–"}</td><td class="n">${d.qol??"–"}</td><td class="n">${fx(d.vp)}</td><td class="n">${fx(d.ippCm,2)}</td><td class="n">${fx(d.qmax)}</td><td class="n">${fx(d.vv,0)}</td><td class="n">${fx(d.pvr,0)}</td><td class="n">${nf}</td><td><span class="chip ${st}">${d.status}</span></td><td style="white-space:nowrap"><button class="btn sm" type="button" data-edit="${i}">Buka</button> <button class="btn sm danger" type="button" data-del="${i}">Hapus</button></td></tr>`;}).join("");
+}
+document.addEventListener("click",e=>{
+  const ed=e.target.closest("[data-edit]"); if(ed){ const r=records[+ed.dataset.edit]; restore(r.v); files={uf:r.files.uf,dta:r.files.dta,bn:r.files.bn.slice(),wall:r.files.wall.slice()}; Object.keys(DROPS).forEach(renderDrop); codeTouched=true; isExample=r.example; $("#example-banner").hidden=!r.example; update(); showTab("form"); window.scrollTo({top:0}); toast(`${r.kode} dibuka untuk disunting`); return; }
+  const del=e.target.closest("[data-del]"); if(del){
+    if(del.dataset.confirm){ const k=records[+del.dataset.del].kode; records.splice(+del.dataset.del,1); renderTable(); toast(`${k} dihapus`); }
+    else { del.dataset.confirm="1"; del.textContent="Yakin hapus?"; setTimeout(()=>{ if(del.isConnected){ delete del.dataset.confirm; del.textContent="Hapus"; } },3000); }
+  }
+});
+$("#btn-goto-form").addEventListener("click",()=>showTab("form"));
+
+/* ---------------- Kamus & ekspor ---------------- */
+const yn=x=>x===null||x===undefined?"":x;
+const COLS=[
+ {g:"Identitas",c:"KodeSubjek",l:"Kode subjek",s:"Teks",u:"RS-urut",src:"Otomatis",sec:1,f:r=>r.kode},
+ {g:"Identitas",c:"RumahSakit",l:"Rumah sakit",s:"Nominal",u:"PSH, CM, UI, FTW",src:"Formulir",sec:1,f:r=>r.v.f_rs},
+ {g:"Identitas",c:"Nama",l:"Nama pasien",s:"Teks",u:"—",src:"Rekam medis",sec:1,pii:1,f:r=>r.v.f_nama},
+ {g:"Identitas",c:"NRM",l:"Nomor rekam medis",s:"Teks",u:"—",src:"Rekam medis",sec:1,pii:1,f:r=>r.v.f_nrm},
+ {g:"Identitas",c:"TanggalLahir",l:"Tanggal lahir",s:"Tanggal",u:"YYYY-MM-DD",src:"Rekam medis",sec:1,pii:1,f:r=>r.v.f_tgllahir},
+ {g:"Identitas",c:"TanggalPemeriksaan",l:"Tanggal pemeriksaan",s:"Tanggal",u:"YYYY-MM-DD",src:"Formulir",sec:1,pii:1,f:r=>r.v.f_tglperiksa},
+ {g:"Identitas",c:"Alamat",l:"Alamat",s:"Teks",u:"—",src:"Rekam medis",sec:1,pii:1,f:r=>r.v.f_alamat},
+ {g:"Klinis",c:"Usia",l:"Usia",s:"Numerik",u:"tahun",src:"Tgl lahir → tgl data",sec:1,f:r=>yn(r.d.age)},
+ {g:"Seleksi",c:"Layak",l:"Memenuhi kriteria seleksi",s:"Nominal",u:"0 = Ya, 1 = Tidak, kosong = belum dinilai",src:"Otomatis",sec:2,f:r=>r.d.eligible===true?0:r.d.eligible===false?1:""},
+ ...IPSS.map(q=>({g:"IPSS",c:"IPSS"+q.n,l:`IPSS item ${q.n} · ${q.s}`,s:"Numerik",u:"0–5",src:"Kuesioner IPSS",sec:3,f:r=>yn(r.d.q[q.n-1])})),
+ {g:"IPSS",c:"SkorStorage",l:"Skor IPSS storage (item 2, 4, 7)",s:"Numerik",u:"0–15",src:"Otomatis",sec:3,f:r=>yn(r.d.storage)},
+ {g:"IPSS",c:"SkorVoiding",l:"Skor IPSS voiding (item 1, 3, 5, 6)",s:"Numerik",u:"0–20",src:"Otomatis",sec:3,f:r=>yn(r.d.voiding)},
+ {g:"IPSS",c:"TotalIPSS",l:"Skor total IPSS",s:"Numerik",u:"0–35",src:"Otomatis",sec:3,f:r=>yn(r.d.total)},
+ {g:"IPSS",c:"KategoriIPSS",l:"Derajat gejala",s:"Ordinal",u:"Ringan 0–7, Sedang 8–19, Berat 20–35",src:"Otomatis",sec:3,f:r=>r.d.severity||""},
+ {g:"IPSS",c:"QoL",l:"Skor kualitas hidup",s:"Numerik",u:"0–6",src:"Kuesioner IPSS",sec:3,f:r=>yn(r.d.qol)},
+ {g:"Komorbid",c:"Diabetes",l:"Diabetes melitus",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Rekam medis",sec:4,f:r=>r.v.dm},
+ {g:"Komorbid",c:"Stroke",l:"Riwayat stroke",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Rekam medis",sec:4,f:r=>r.v.stroke},
+ {g:"Komorbid",c:"Neurologi",l:"Penyakit saraf perifer",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Rekam medis",sec:4,f:r=>r.v.neuro},
+ {g:"Komorbid",c:"NeurologiKet",l:"Keterangan neurologis",s:"Teks",u:"—",src:"Rekam medis",sec:4,f:r=>r.v.f_neuroket},
+ {g:"USG prostat",c:"MetodeUSG",l:"Metode USG",s:"Nominal",u:"TA (transabdominal)",src:"USG",sec:5,f:r=>r.v.usg_metode},
+ {g:"USG prostat",c:"VolProstat",l:"Volume prostat",s:"Numerik",u:"cc",src:"USG, buli >100 mL",sec:5,f:r=>yn(r.d.vp)},
+ {g:"USG prostat",c:"IPP",l:"Intravesical prostatic protrusion",s:"Numerik",u:"cm",src:"USG TA midsagital",sec:5,f:r=>r.d.ippCm===null?"":+r.d.ippCm.toFixed(2)},
+ {g:"USG prostat",c:"GradeIPP",l:"Derajat IPP",s:"Ordinal",u:"I <0,5; II 0,5–1,0; III >1,0 cm",src:"Otomatis",sec:5,f:r=>r.d.ippGrade||""},
+ {g:"Uroflowmetri",c:"Qmax",l:"Laju pancaran maksimum",s:"Numerik",u:"mL/s",src:"Uroflowmetri",sec:6,f:r=>yn(r.d.qmax)},
+ {g:"Uroflowmetri",c:"Qave",l:"Laju pancaran rata-rata",s:"Numerik",u:"mL/s",src:"Uroflowmetri",sec:6,f:r=>yn(r.d.qave)},
+ {g:"Uroflowmetri",c:"VV",l:"Voided volume",s:"Numerik",u:"mL",src:"Uroflowmetri",sec:6,f:r=>yn(r.d.vv)},
+ {g:"Uroflowmetri",c:"PVR",l:"Post-void residual",s:"Numerik",u:"mL",src:"USG buli pascaminksi",sec:6,f:r=>yn(r.d.pvr)},
+ {g:"Uroflowmetri",c:"FlowTime",l:"Flow time",s:"Numerik",u:"s",src:"Uroflowmetri",sec:6,f:r=>yn(r.d.ft)},
+ {g:"Uroflowmetri",c:"TQmax",l:"Time to Qmax",s:"Numerik",u:"s",src:"Uroflowmetri",sec:6,f:r=>yn(r.d.tq)},
+ {g:"Waveform",c:"WaveformLayak",l:"Kurva layak analisis waveform",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"VV ≥100 mL, artefak minimal",sec:6,f:r=>r.d.wfOk===null?"":r.d.wfOk?0:1},
+ {g:"Waveform",c:"FileUroflow",l:"Berkas tabel & kurva uroflow",s:"Berkas",u:"PDF / JPG",src:"Unggahan",sec:6,f:r=>r.files.uf?exportNameFor(r,"uf",r.files.uf,0):""},
+ {g:"Waveform",c:"FileDTA",l:"Data mentah waveform",s:"Berkas",u:".dta",src:"Unggahan",sec:6,f:r=>r.files.dta?exportNameFor(r,"dta",r.files.dta,0):""},
+ {g:"Sistoskopi",c:"TanggalSistoskopi",l:"Tanggal sistoskopi",s:"Tanggal",u:"YYYY-MM-DD",src:"Laporan sistoskopi",sec:7,f:r=>r.v.f_sistgl},
+ {g:"Sistoskopi",c:"JenisSistoskop",l:"Jenis sistoskop",s:"Nominal",u:"Rigid, Fleksibel",src:"Laporan sistoskopi",sec:7,f:r=>r.v.sis_jenis},
+ {g:"Sistoskopi",c:"JumlahCitraBN",l:"Citra leher buli / uretra prostatika",s:"Citra",u:"jumlah berkas (≥2)",src:"Rekaman video",sec:7,f:r=>r.files.bn.length},
+ {g:"Sistoskopi",c:"JumlahCitraDinding",l:"Citra dinding buli",s:"Citra",u:"jumlah berkas (≥2)",src:"Rekaman video",sec:7,f:r=>r.files.wall.length},
+ {g:"Sistoskopi",c:"Trabekulasi",l:"Derajat trabekulasi",s:"Ordinal",u:"0 tidak ada – 3 berat",src:"Anotasi klinis",sec:7,f:r=>r.v.trab},
+ {g:"Sistoskopi",c:"KissingLobe",l:"Oklusi lobus lateral",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Anotasi klinis",sec:7,f:r=>r.v.sis_kissing?0:1},
+ {g:"Sistoskopi",c:"LobusMedius",l:"Lobus medius / protrusi",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Anotasi klinis",sec:7,f:r=>r.v.sis_medius?0:1},
+ {g:"Sistoskopi",c:"LeherBuliTinggi",l:"Leher buli tinggi",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Anotasi klinis",sec:7,f:r=>r.v.sis_bn?0:1},
+ {g:"Sistoskopi",c:"SelulaDivertikel",l:"Selula / divertikel",s:"Nominal",u:"0 = Ya, 1 = Tidak",src:"Anotasi klinis",sec:7,f:r=>r.v.sis_divert?0:1},
+ {g:"Status",c:"StatusData",l:"Status kelengkapan",s:"Nominal",u:"Lengkap, Belum lengkap, Tidak layak",src:"Otomatis",sec:"–",f:r=>r.d.status+(r.example?" (contoh)":"")}
+];
+function exportNameFor(r,key,f,i){ const e=extOf(f.name)==="jpeg"?"jpg":extOf(f.name); const c=r.kode; return {uf:`uroflow/${c}_uroflow.${e}`,dta:`waveform_dta/${c}.${e}`,bn:`sistoskopi/${c}_BN_${i+1}.${e}`,wall:`sistoskopi/${c}_DINDING_${i+1}.${e}`}[key]; }
+function buildDict(){
+  let h="",g=null;
+  COLS.forEach(c=>{ if(c.g!==g){g=c.g; h+=`<tr class="grp-row"><td colspan="6">${g}</td></tr>`;} h+=`<tr><td class="mono">${c.c}${c.pii?' <span class="chip warn" style="margin-left:4px">identitas</span>':""}</td><td>${esc(c.l)}</td><td>${c.s}</td><td>${esc(c.u)}</td><td>${esc(c.src)}</td><td class="n">${c.sec}</td></tr>`; });
+  $("#dict tbody").innerHTML=h;
+}
+function csvCell(x){ const s=String(x==null?"":x); return /[",\n;]/.test(s)? `"${s.replace(/"/g,'""')}"` : s; }
+function toCSV(anon){ const cols=COLS.filter(c=>!(anon&&c.pii)); return "﻿"+[cols.map(c=>c.c).join(","),...records.map(r=>cols.map(c=>csvCell(c.f(r))).join(","))].join("\r\n"); }
+function dictCSV(){ return "﻿"+["Kolom,Variabel,Skala,Satuan/kode,Sumber,Bagian,Identitas",...COLS.map(c=>[c.c,c.l,c.s,c.u,c.src,c.sec,c.pii?"ya":""].map(csvCell).join(","))].join("\r\n"); }
+
+let dl=null;
+try{ if(window.claude&&window.claude.use) window.claude.use("downloads").then(x=>{dl=x;}).catch(()=>{}); }catch(e){}
+function stamp(){ return todayISO().replace(/-/g,""); }
+const inViewer=!!(window.claude&&window.claude.use);
+function browserDownload(name,data){
+  const blob=data instanceof Blob? data : new Blob([data],{type:name.endsWith(".csv")?"text/csv;charset=utf-8":"application/octet-stream"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1500); toast(`${name} diunduh`); return true;
+}
+async function saveFile(name,data){
+  if(!dl) return inViewer? false : browserDownload(name,data);
+  try{ await dl.save({filename:name,data}); toast(`${name} siap disimpan`); }
+  catch(err){ const c=err&&err.code; toast(c==="declined"?"Penyimpanan dibatalkan":c==="rate_limited"?"Masih ada dialog simpan yang terbuka":"Unduhan tidak tersedia di tampilan ini"); }
+  return true;
+}
+$("#btn-csv").addEventListener("click",async()=>{
+  if(!records.length){ toast("Belum ada subjek tersimpan."); return; }
+  const csv=toCSV(false);
+  if(!(await saveFile(`ecrf_boo_ud_lengkap_${stamp()}.csv`,csv))) openModal("CSV lengkap","Unduhan tidak tersedia di tampilan ini. Salin teks berikut lalu tempel ke Excel atau simpan sebagai .csv.",csv);
+});
+$("#btn-zip").addEventListener("click",async()=>{
+  if(!records.length){ toast("Belum ada subjek tersimpan."); return; }
+  if(!dl && inViewer){ openModal("Dataset anonim (CSV)","Paket .zip butuh izin unduhan yang tidak tersedia di tampilan ini. Teks CSV anonim di bawah bisa disalin; berkas unggahan perlu dikumpulkan terpisah.",toCSV(true)); return; }
+  try{
+    if(!window.JSZip) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    const z=new JSZip(); z.file("dataset_anonim.csv",toCSV(true)); z.file("kamus_data.csv",dictCSV());
+    records.forEach(r=>{ const F=r.files;
+      if(F.uf) z.file(exportNameFor(r,"uf",F.uf,0),F.uf); if(F.dta) z.file(exportNameFor(r,"dta",F.dta,0),F.dta);
+      F.bn.forEach((f,i)=>z.file(exportNameFor(r,"bn",f,i),f)); F.wall.forEach((f,i)=>z.file(exportNameFor(r,"wall",f,i),f)); });
+    const blob=await z.generateAsync({type:"blob"});
+    await saveFile(`ecrf_boo_ud_anonim_${stamp()}.zip`,blob);
+  }catch(e){ toast("Gagal menyusun paket .zip. Coba lagi."); }
+});
+
+/* ---------------- Modal & toast ---------------- */
+function openModal(t,p,text){ $("#modal-t").textContent=t; $("#modal-p").textContent=p; $("#modal-ta").value=text.replace(/^﻿/,""); $("#modal").hidden=false; }
+$("#modal-close").addEventListener("click",()=>{$("#modal").hidden=true;});
+$("#modal-copy").addEventListener("click",()=>{ const ta=$("#modal-ta"); const done=()=>toast("Tersalin"); try{ navigator.clipboard.writeText(ta.value).then(done,()=>{ta.select();toast("Teks terpilih — tekan Ctrl/⌘+C");}); }catch(e){ ta.select(); toast("Teks terpilih — tekan Ctrl/⌘+C"); } });
+let tt=null; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),3200); }
+
+/* ---------------- Tab ---------------- */
+function showTab(name){
+  ["form","map","data"].forEach(n=>{ $("#tab-"+n).hidden=n!==name; $("#tab-btn-"+n).setAttribute("aria-selected",String(n===name)); });
+}
+["form","map","data"].forEach(n=>$("#tab-btn-"+n).addEventListener("click",()=>showTab(n)));
+const h=(location.hash||"").slice(1); if(["map","data"].includes(h)) showTab(h);
+
+/* ---------------- Mulai ---------------- */
+buildIPSS(); buildNav(); buildDict(); renderTable();
+exampleForm();
+})();
+</script>
+
+</body>
+</html>
